@@ -14,7 +14,6 @@ class handDetector():
         self.hands = self.mpHands.Hands(self.mode, self.maxHands,self.modelComplex,
                                         self.detectionCon, self.trackCon)
         self.mpDraw = mp.solutions.drawing_utils # it gives small dots onhands total 20 landmark points
-
     def findHands(self,img,draw=True):
         # Send rgb image to hands
         imgRGB = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
