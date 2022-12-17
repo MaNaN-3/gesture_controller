@@ -1,54 +1,88 @@
 import cv2
 import mediapipe as mp
-from math import hypot
-from ctypes import cast, POINTER
-from comtypes import CLSCTX_ALL
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-import numpy as np
+import time
 
-cap = cv2.VideoCapture(0)
+# class creation
+class handDetector():
+    def __init__(self, mode=False, maxHands=2, detectionCon=0.5,modelComplexity=1,trackCon=0.5):
+        self.mode = mode
+        self.maxHands = maxHands
+        self.detectionCon = detectionCon
+        self.modelComplex = modelComplexity
+        self.trackCon = trackCon
+        self.mpHands = mp.solutions.hands
+        self.hands = self.mpHands.Hands(self.mode, self.maxHands,self.modelComplex,
+                                        self.detectionCon, self.trackCon)
+        self.mpDraw = mp.solutions.drawing_utils # it gives small dots onhands total 20 landmark points
 
-# Detecting, initializing, and configuring the hands
-mpHands = mp.solutions.hands
-hands = mpHands.Hands()
-mpDraw = mp.solutions.drawing_utils
+    def findHands(self,img,draw=True):
+        # Send rgb image to hands
+        imgRGB = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+        self.results = self.hands.process(imgRGB) # process the frame
+    #     print(results.multi_hand_landmarks)
 
-# Accessing the speaker using pycaw
-devices = AudioUtilities.GetSpeakers()
-interface = devices.Activate(IAudioEndpointVolume.iid_, CLSCTX_ALL, None)
-volume = cast(interface, POINTER(IAudioEndpointVolume))
+        if self.results.multi_hand_landmarks:
+            for handLms in self.results.multi_hand_landmarks:
 
-# Finding the volume range between the minimum and maximum volume
-volMin, volMax = volume.GetVolumeRange()[:2]
+                if draw:
+                    #Draw dots and connect them
+                    self.mpDraw.draw_landmarks(img,handLms,self.mpHands.HAND_CONNECTIONS)
+        return img
 
-# Capturing an image from our camera and converting it to an RGB image
+    def findPosition(self,img, handNo=0, draw=True):
+        """Lists the position/type of landmarks
+        we give in the list and in the list ww have stored
+        type and position of the landmarks.
+        List has all the lm position"""
 
-while True:
-    success, img = cap.read()
-    imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    results = hands.process(imgRGB)
+        lmlist = []
 
-# Checking whether we have multiple hands in our input
-lmList = []
-if results.multi_hand_landmarks:
-    for handlandmark in results.multi_hand_landmarks:
-        for id, lm in enumerate(handlandmark.landmark):
-            h, w, c = img.shape
-            cx, cy = int(lm.x * w), int(lm.y * h)
-            lmList.append([id, cx, cy])
-        mpDraw.draw_landmarks(img, handlandmark, mpHands.HAND_CONNECTIONS)
-        if lmList:
-            x1, y1 = lmList[4][1], lmList[4][2]
-            x2, y2 = lmList[8][1], lmList[8][2]
-        cv2.circle(img, (x1, y1), 15, (255, 0, 0), cv2.FILLED)
-        cv2.circle(img, (x2, y2), 15, (255, 0, 0), cv2.FILLED)
-        cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
+        # check wether any landmark was detected
+        if self.results.multi_hand_landmarks:
+            #Which hand are we talking about
+            myHand = self.results.multi_hand_landmarks[handNo]
+            # Get id number and landmark information
+            for id, lm in enumerate(myHand.landmark):
+                # id will give id of landmark in exact index number
+                # height width and channel
+                h,w,c = img.shape
+                #find the position
+                cx,cy = int(lm.x*w), int(lm.y*h) #center
+                # print(id,cx,cy)
+                lmlist.append([id,cx,cy])
 
-        length = hypot(x2 - x1, y2 - y1)
+                # Draw circle for 0th landmark
+                if draw:
+                    cv2.circle(img,(cx,cy), 15 , (255,0,255), cv2.FILLED)
 
-        vol = np.interp(length, [15, 220], [volMin, volMax])
-        print(vol, length)
-        volume.SetMasterVolumeLevel(vol, None)
-        cv2.imshow('Image', img)
-        if cv2.waitKey(1) & 0xff == ord('q'):
-           break
+        return lmlist
+
+def main():
+    #Frame rates
+    pTime = 0
+    cTime = 0
+    cap = cv2.VideoCapture(0)
+    detector = handDetector()
+
+    while True:
+        success,img = cap.read()
+        img = detector.findHands(img)
+        lmList = detector.findPosition(img)
+        if len(lmList) != 0:
+            print(lmList[4])
+
+        cTime = time.time()
+        fps = 1/(cTime-pTime)
+        pTime = cTime
+
+        cv2.putText(img,str(int(fps)),(10,70), cv2.FONT_HERSHEY_PLAIN,3,(255,0,255),3)
+
+        cv2.imshow("Video",img)
+        if cv2.waitKey(1) == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
